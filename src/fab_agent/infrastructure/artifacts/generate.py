@@ -80,6 +80,7 @@ def _write_report(
     takeoff: Takeoff,
     *,
     demo: bool,
+    cad_enabled: bool,
 ) -> None:
     lines = [
         f"# {REVIEW_LABEL}",
@@ -102,6 +103,17 @@ def _write_report(
                 f"- Material: {spool.material_raw}",
                 f"- Total length: {item.main_run_length.display}",
                 f"- Features: {sum(item.component_counts.values())}",
+                "",
+            ]
+        )
+    if cad_enabled:
+        lines.extend(
+            [
+                "## CAD compatibility",
+                "",
+                "- Open each `spools/<spool-id>.step` file in Autodesk Fusion as solid-body "
+                "review geometry.",
+                "- STEP does not contain a native Fusion parametric timeline.",
                 "",
             ]
         )
@@ -161,7 +173,14 @@ def generate_artifacts(
         bom = root / "bom.csv"
         report = root / "review.md"
         _write_bom(bom, takeoff)
-        _write_report(report, design, validation, takeoff, demo=allow_demo)
+        _write_report(
+            report,
+            design,
+            validation,
+            takeoff,
+            demo=allow_demo,
+            cad_enabled=cad_enabled,
+        )
         files["bom"] = bom
         files["review"] = report
         return ArtifactSet(root=root, files=files)

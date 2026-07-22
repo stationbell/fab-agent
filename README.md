@@ -1,5 +1,7 @@
 # fab-agent
 
+#### NOTE: I created this repository as an experimental expansion of a simpler prototype I built in another project for a licensed fire protection company.
+
 `fab-agent` turns photographs of simple hand-drawn straight pipe-spool sketches into structured, validated, reviewable fabrication packages.
 
 > **REVIEW OUTPUT — NOT APPROVED FOR FABRICATION**
@@ -165,6 +167,13 @@ or `observed_components` array fields, and JSON strings nested in those same two
 The adapter records each normalization in the observation uncertainties. Every undeclared field
 remains a hard validation error. During long cloud calls, the CLI prints a heartbeat every 15
 seconds so an active request is visible.
+
+After schema validation, deterministic conversion may make two source-preserving structural
+repairs: an `unknown_end` in the first or last ordered position becomes the topological `start` or
+`end`, and a missing observed-component kind may be recovered from an explicit parts-list word
+such as `coupling`. Both repairs are recorded as uncertainties; labels and raw descriptions remain
+unchanged. The stated-total parser accepts the field label `Total` before or after an otherwise
+valid imperial dimension, but the general dimension parser remains strict.
 
 Supported overrides are:
 
@@ -332,7 +341,7 @@ A passing multi-spool package contains:
 ```text
 artifacts/
 ├── spools/
-│   ├── spool-001.step
+│   ├── spool-001.step  # Autodesk Fusion-compatible solid
 │   ├── spool-001.png
 │   ├── spool-001.svg
 │   └── ...
@@ -342,11 +351,25 @@ artifacts/
 
 STEP output is simplified review geometry built only from validated source fields and configured catalog geometry. It contains no exact threads, welds, fitting allowances, or standards-based values not present in reviewed catalogs.
 
+### Autodesk Fusion
+
+The generated `.step` file is the Fusion-compatible CAD artifact. In Fusion, use **File > Open >
+Open from my computer**, or upload the file through the Data Panel. Fusion translates STEP into
+solid bodies that can be inspected and edited. See Autodesk's
+[supported file formats](https://help.autodesk.com/view/fusion360/ENU/?guid=TPD-SUPPORTED-FILE-FORMATS)
+and [file-opening instructions](https://help.autodesk.com/view/fusion360/ENU/?caas=caas%2Fsfdcarticles%2Fsfdcarticles%2FHow-to-import-or-open-a-file-in-Autodesk-Fusion-360.html).
+
+The application does not generate a native `.f3d` archive. Creating one requires Fusion's own
+runtime/API, and converting this simplified review solid would not create a meaningful parametric
+timeline. Autodesk identifies F3D as the native format that preserves Fusion timeline information;
+STEP is the cleaner headless interchange format for this application.
+
 `bom.csv` distinguishes `derived_geometry`, `observed_parts_list`, and
 `observed_and_derived` sources. A loose component written in the sketch's parts list remains in
 the BOM even when its placement is not drawn; the application does not invent a CAD position for
 it. A quantity conflict is raised only when the same typed component is both modeled and listed
-with different quantities.
+with different quantities. Component keys include nominal size when it is available, so unlike
+sizes are never merged into one takeoff line.
 
 ## Public API
 

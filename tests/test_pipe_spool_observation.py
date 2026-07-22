@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+from fab_agent.domain.design import ObservedComponent
 from fab_agent.domain.validation import validate_design
 from fab_agent.infrastructure.catalogs import CatalogBundle
 from fab_agent.models.pipe_spool import convert_observation
@@ -101,3 +102,31 @@ def test_segment_count_mismatch_is_visible_and_not_invented() -> None:
 
     assert len(inspection.design.spools[0].segments) == 2
     assert "expected 3" in inspection.uncertainties[0]
+
+
+def test_unknown_boundary_kinds_become_topological_start_and_end() -> None:
+    observation = _sample_observation()
+    observation.spools[0].physical_features_left_to_right[0].kind = "unknown_end"
+    observation.spools[0].physical_features_left_to_right[-1].kind = "unknown_end"
+
+    inspection = convert_observation(observation)
+
+    assert inspection.design.spools[0].features[0].kind == "start"
+    assert inspection.design.spools[0].features[-1].kind == "end"
+    assert sum("normalized boundary feature" in item for item in inspection.uncertainties) == 2
+
+
+def test_explicit_parts_list_word_recovers_missing_component_kind() -> None:
+    observation = _sample_observation()
+    observation.observed_components = [
+        ObservedComponent(
+            description_raw='4" Couplings',
+            quantity=2,
+            nominal_size_raw='4"',
+        )
+    ]
+
+    inspection = convert_observation(observation)
+
+    assert inspection.design.observed_components[0].kind == "coupling"
+    assert "explicit parts-list text" in inspection.uncertainties[0]

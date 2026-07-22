@@ -82,7 +82,7 @@ def _artifact_label(path: Path) -> str:
     if path.name == "bom.csv":
         return "BOM"
     return {
-        ".step": "CAD (STEP)",
+        ".step": "Fusion CAD (STEP)",
         ".png": "Diagram",
         ".svg": "Diagram (SVG)",
     }.get(path.suffix.casefold(), "Artifact")
@@ -93,7 +93,7 @@ def _print_artifacts(paths: list[Path]) -> None:
         return
     typer.echo("Artifacts:")
     for path in sorted(paths):
-        typer.echo(f"  {_artifact_label(path):14} {path}")
+        typer.echo(f"  {_artifact_label(path):18} {path}")
 
 
 def _print_result(result: FabResult, json_output: bool) -> None:

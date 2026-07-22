@@ -2,7 +2,7 @@ from fractions import Fraction
 
 import pytest
 
-from fab_agent.domain.dimensions import format_inches, parse_dimension
+from fab_agent.domain.dimensions import format_inches, parse_dimension, parse_stated_total
 from fab_agent.errors import DimensionParseError
 
 
@@ -33,6 +33,19 @@ def test_parse_dimension(raw: str, expected: Fraction) -> None:
 
 def test_format_exact_inches() -> None:
     assert format_inches(Fraction(521, 4)) == "10' 10 1/4\""
+
+
+@pytest.mark.parametrize("raw", ["9'-7\" Total", "Total: 9'-7\"", "TOTAL LENGTH 9'-7\""])
+def test_parse_stated_total_allows_only_the_field_label(raw: str) -> None:
+    dimension = parse_stated_total(raw)
+
+    assert dimension.raw == raw
+    assert dimension.inches == Fraction(115)
+
+
+def test_normal_dimension_parser_remains_strict_about_field_labels() -> None:
+    with pytest.raises(DimensionParseError):
+        parse_dimension("9'-7\" Total")
 
 
 @pytest.mark.parametrize(

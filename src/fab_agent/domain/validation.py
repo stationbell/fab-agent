@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from fractions import Fraction
 from typing import Literal
 
 from pydantic import Field
 
 from fab_agent.domain.design import DomainModel, FabricationDesign, Feature, Spool
-from fab_agent.domain.dimensions import format_inches, parse_dimension
+from fab_agent.domain.dimensions import (
+    Dimension,
+    format_inches,
+    parse_dimension,
+    parse_stated_total,
+)
 from fab_agent.errors import DimensionParseError
 from fab_agent.infrastructure.catalogs import CatalogBundle
 
@@ -76,11 +82,12 @@ def _parse_source_dimension(
     issues: list[ValidationIssue],
     spool: Spool,
     field_path: str,
+    parser: Callable[[str], Dimension] = parse_dimension,
 ) -> Fraction | None:
     if not value:
         return None
     try:
-        return parse_dimension(value).inches
+        return parser(value).inches
     except DimensionParseError as exc:
         _issue(issues, "error", "dimension.invalid", str(exc), spool, field_path)
         return None
@@ -342,6 +349,7 @@ def validate_design(
             issues=issues,
             spool=spool,
             field_path=f"spools.{spool.id}.stated_total_length_raw",
+            parser=parse_stated_total,
         )
         if stated_total is not None and stated_total <= 0:
             _issue(
@@ -360,7 +368,11 @@ def validate_design(
                 f"{format_inches(chain_total)}",
                 spool,
             )
-        total = stated_total if stated_total is not None else chain_total
+        # A complete chain owns its internal positions even when it conflicts with
+        # the separately stated total. The conflict already blocks finalization;
+        # using the shorter stated value here would add derivative out-of-bounds
+        # errors for an otherwise coherent chain.
+        total = chain_total if chain_total is not None else stated_total
         if total is None:
             _issue(
                 issues,

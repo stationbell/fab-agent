@@ -1,3 +1,4 @@
+import csv
 from fractions import Fraction
 
 from fab_agent.domain.design import FabricationDesign, ObservedComponent
@@ -13,7 +14,12 @@ def test_generates_png_svg_csv_report_and_step(
     valid_design.spools[0].features[0].kind = "start"
     valid_design.spools[0].features[-1].kind = "end"
     valid_design.observed_components = [
-        ObservedComponent(description_raw="2 - 4 inch couplings", quantity=2, kind="Coupling")
+        ObservedComponent(
+            description_raw="2 - 4 inch couplings",
+            quantity=2,
+            nominal_size_raw='4"',
+            kind="Coupling",
+        )
     ]
     validation = validate_design(
         valid_design,
@@ -33,9 +39,18 @@ def test_generates_png_svg_csv_report_and_step(
     assert artifacts.files["spool-001_step"].stat().st_size > 0
     assert artifacts.files["spool-001_png"].stat().st_size > 0
     assert artifacts.files["spool-001_svg"].stat().st_size > 0
+    assert "threaded outlet" in artifacts.files["spool-001_svg"].read_text()
     bom = artifacts.files["bom"].read_text()
     review = artifacts.files["review"].read_text()
     assert "REVIEW OUTPUT" in bom
-    assert "observed_parts_list,coupling,2" in bom
+    rows = list(csv.DictReader(bom.splitlines()))
+    assert {
+        "review_status": "REVIEW OUTPUT — NOT APPROVED FOR FABRICATION",
+        "source": "observed_parts_list",
+        "item": '4" coupling',
+        "quantity": "2",
+    } in rows
     assert "SYNTHETIC GEOMETRY" in review
+    assert "Open each `spools/<spool-id>.step` file in Autodesk Fusion" in review
+    assert "does not contain a native Fusion parametric timeline" in review
     assert "they are not placed in CAD" in review

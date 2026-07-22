@@ -9,10 +9,20 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 
-from fab_agent.domain.design import Spool
+from fab_agent.domain.design import Feature, Spool
 from fab_agent.domain.validation import SpoolGeometry, ValidationIssue
 
 REVIEW_LABEL = "REVIEW OUTPUT — NOT APPROVED FOR FABRICATION"
+
+
+def _feature_label(feature: Feature) -> str:
+    if feature.label:
+        return feature.label
+    size = f"{feature.nominal_size_raw} " if feature.nominal_size_raw else ""
+    if feature.kind == "outlet":
+        connection = f"{feature.connection_type} " if feature.connection_type else ""
+        return f"{size}{connection}outlet".strip()
+    return f"{size}{feature.kind.replace('_', ' ')}".strip()
 
 
 def generate_diagram(
@@ -34,7 +44,7 @@ def generate_diagram(
                 direction = -1 if feature.orientation == "down" else 1
                 axis.plot([position, position], [0, direction * 0.55], color="#d1495b", linewidth=5)
             axis.annotate(
-                f"{feature.label or feature.id}\n{position_value.display}",
+                f"{_feature_label(feature)}\n{position_value.display}",
                 xy=(position, 0),
                 xytext=(0, 25 if position % 2 else -42),
                 textcoords="offset points",

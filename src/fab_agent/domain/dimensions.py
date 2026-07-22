@@ -95,6 +95,16 @@ def parse_dimension(raw: str) -> Dimension:
     raise DimensionParseError(f"Unsupported dimension: {raw!r}")
 
 
+def parse_stated_total(raw: str) -> Dimension:
+    """Parse a dimension from a total field while preserving its raw source text."""
+
+    text = raw.strip()
+    text = re.sub(r"^total(?:\s+length)?\s*[:=-]?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*[-:]?\s*total(?:\s+length)?$", "", text, flags=re.IGNORECASE)
+    parsed = parse_dimension(text)
+    return Dimension(raw=raw, inches=parsed.inches)
+
+
 def format_inches(value: Fraction) -> str:
     """Format inches as feet and exact residual inches."""
 

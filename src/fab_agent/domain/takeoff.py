@@ -7,12 +7,24 @@ from collections import Counter
 from pydantic import Field
 
 from fab_agent.domain.design import DomainModel, FabricationDesign
-from fab_agent.domain.dimensions import parse_dimension
+from fab_agent.domain.dimensions import format_inches, parse_dimension
 from fab_agent.domain.validation import RationalValue, ValidationReport
+from fab_agent.errors import DimensionParseError
 
 
 def _normalize_component_kind(value: str) -> str:
     return "_".join(value.strip().casefold().replace("-", " ").split())
+
+
+def _component_key(kind: str, nominal_size_raw: str | None) -> str:
+    normalized_kind = _normalize_component_kind(kind)
+    if not nominal_size_raw:
+        return normalized_kind
+    try:
+        size = format_inches(parse_dimension(nominal_size_raw).inches)
+    except DimensionParseError:
+        size = " ".join(nominal_size_raw.split())
+    return f"{size} {normalized_kind}"
 
 
 class FeaturePosition(DomainModel):
@@ -47,10 +59,11 @@ def compute_takeoff(design: FabricationDesign, validation: ValidationReport) -> 
         geometry = geometry_by_id[spool.id]
         counts: Counter[str] = Counter()
         for feature in spool.features:
-            key: str = feature.kind
+            kind: str = feature.kind
             if feature.kind == "outlet" and feature.connection_type:
-                key = f"{feature.connection_type}_outlet"
+                kind = f"{feature.connection_type}_outlet"
             if feature.kind not in {"start", "end"}:
+                key = _component_key(kind, feature.nominal_size_raw)
                 counts[key] += 1
                 summary[key] += 1
         segment_lengths = [
@@ -72,13 +85,19 @@ def compute_takeoff(design: FabricationDesign, validation: ValidationReport) -> 
     observed: Counter[str] = Counter()
     for component in design.observed_components:
         if component.kind:
-            observed[_normalize_component_kind(component.kind)] += component.quantity
+            if component.nominal_size_raw:
+                key = _component_key(component.kind, component.nominal_size_raw)
+            else:
+                description = " ".join(component.description_raw.split())
+                key = f"{description} [{_normalize_component_kind(component.kind)}]"
+            observed[key] += component.quantity
     # An observed parts list may include loose components whose exact placement is
     # not drawn. Compare quantities only when the same component kind is also
     # represented in the modeled geometry. Otherwise retain the observed item as
     # a separate BOM source without inventing a CAD position for it.
     warnings = [
-        f"Observed parts list has {observed[kind]} {kind}; geometry implies {summary[kind]}"
+        f"Observed parts list quantity for {kind} is {observed[kind]}; "
+        f"geometry implies {summary[kind]}"
         for kind in sorted(observed.keys() & summary.keys())
         if observed[kind] != summary[kind]
     ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from fab_agent.domain.design import FabricationDesign, Feature, Segment, Spool
@@ -14,6 +15,14 @@ _GENERIC_MATERIAL_VALUES = {
     "unknown",
     "unspecified",
 }
+
+_EXPLICIT_COMPONENT_KINDS = (
+    (re.compile(r"\bcouplings?\b", re.IGNORECASE), "coupling"),
+    (re.compile(r"\bcaps?\b", re.IGNORECASE), "cap"),
+    (re.compile(r"\bthreaded\s+outlets?\b", re.IGNORECASE), "threaded_outlet"),
+    (re.compile(r"\bgrooved\s+outlets?\b", re.IGNORECASE), "grooved_outlet"),
+    (re.compile(r"\boutlets?\b", re.IGNORECASE), "outlet"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +37,13 @@ def _material_or_none(value: str | None) -> tuple[str | None, str | None]:
     if value.strip().casefold() in _GENERIC_MATERIAL_VALUES:
         return None, f"Ignored non-material placeholder {value!r}; pipe material remains missing."
     return value, None
+
+
+def _explicit_component_kind(description: str) -> str | None:
+    for pattern, kind in _EXPLICIT_COMPONENT_KINDS:
+        if pattern.search(description):
+            return kind
+    return None
 
 
 def convert_observation(observation: PipeSpoolObservation) -> ConvertedPipeSpool:
@@ -49,13 +65,21 @@ def convert_observation(observation: PipeSpoolObservation) -> ConvertedPipeSpool
         if material_warning:
             uncertainties.append(f"Spool {spool_id}: {material_warning}")
 
-        features = [
-            Feature(id=f"f{index}", **feature.model_dump(exclude_none=True))
-            for index, feature in enumerate(
-                observed.physical_features_left_to_right,
-                start=1,
-            )
-        ]
+        features: list[Feature] = []
+        last_feature_index = len(observed.physical_features_left_to_right) - 1
+        for feature_index, observed_feature in enumerate(observed.physical_features_left_to_right):
+            feature_data = observed_feature.model_dump(exclude_none=True)
+            if observed_feature.kind == "unknown_end" and feature_index in {
+                0,
+                last_feature_index,
+            }:
+                boundary_kind = "start" if feature_index == 0 else "end"
+                feature_data["kind"] = boundary_kind
+                uncertainties.append(
+                    f"Spool {spool_id}: normalized boundary feature {feature_index + 1} "
+                    f"from unknown_end to {boundary_kind}; source labels were preserved."
+                )
+            features.append(Feature(id=f"f{feature_index + 1}", **feature_data))
         expected_segments = max(0, len(features) - 1)
         if len(observed.segment_lengths_left_to_right) != expected_segments:
             uncertainties.append(
@@ -88,11 +112,26 @@ def convert_observation(observation: PipeSpoolObservation) -> ConvertedPipeSpool
             )
         )
 
+    observed_components = []
+    for component in observation.observed_components:
+        if component.kind:
+            observed_components.append(component)
+            continue
+        explicit_kind = _explicit_component_kind(component.description_raw)
+        if explicit_kind is None:
+            observed_components.append(component)
+            continue
+        observed_components.append(component.model_copy(update={"kind": explicit_kind}))
+        uncertainties.append(
+            f"Recovered observed component kind {explicit_kind!r} from explicit parts-list "
+            f"text {component.description_raw!r}."
+        )
+
     return ConvertedPipeSpool(
         design=FabricationDesign(
             project_reference_raw=observation.project_reference_raw,
             spools=spools,
-            observed_components=observation.observed_components,
+            observed_components=observed_components,
             notes=observation.notes,
         ),
         uncertainties=uncertainties,

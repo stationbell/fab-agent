@@ -37,7 +37,7 @@ def test_complete_result_prints_cad_path(
     _print_result(result, json_output=False)
 
     output = capsys.readouterr().out
-    assert "CAD (STEP)" in output
+    assert "Fusion CAD (STEP)" in output
     assert str(cad) in output
 
 

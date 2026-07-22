@@ -12,7 +12,12 @@ from fab_agent.infrastructure.catalogs import CatalogBundle
 
 def test_valid_design_and_takeoff(valid_design: FabricationDesign, catalogs: CatalogBundle) -> None:
     valid_design.observed_components = [
-        ObservedComponent(description_raw="two couplings", quantity=2, kind="Coupling")
+        ObservedComponent(
+            description_raw="two couplings",
+            quantity=2,
+            nominal_size_raw='4"',
+            kind="Coupling",
+        )
     ]
     report = validate_design(
         valid_design,
@@ -24,8 +29,8 @@ def test_valid_design_and_takeoff(valid_design: FabricationDesign, catalogs: Cat
     assert report.geometries[0].total_length.display == "8' 0\""
 
     takeoff = compute_takeoff(valid_design, report)
-    assert takeoff.component_summary == {"coupling": 2, "threaded_outlet": 1}
-    assert takeoff.observed_component_summary == {"coupling": 2}
+    assert takeoff.component_summary == {'1 1/4" threaded_outlet': 1, '4" coupling': 2}
+    assert takeoff.observed_component_summary == {'4" coupling': 2}
     assert takeoff.reconciliation_warnings == []
     assert takeoff.spools[0].segment_lengths[0].display == "3' 0\""
 
@@ -36,7 +41,12 @@ def test_observed_loose_parts_do_not_require_invented_geometry(
     valid_design.spools[0].features[0].kind = "start"
     valid_design.spools[0].features[-1].kind = "end"
     valid_design.observed_components = [
-        ObservedComponent(description_raw="2 - 4 inch couplings", quantity=2, kind="Coupling")
+        ObservedComponent(
+            description_raw="2 - 4 inch couplings",
+            quantity=2,
+            nominal_size_raw='4"',
+            kind="Coupling",
+        )
     ]
     report = validate_design(
         valid_design,
@@ -47,8 +57,8 @@ def test_observed_loose_parts_do_not_require_invented_geometry(
 
     takeoff = compute_takeoff(valid_design, report)
 
-    assert takeoff.component_summary == {"threaded_outlet": 1}
-    assert takeoff.observed_component_summary == {"coupling": 2}
+    assert takeoff.component_summary == {'1 1/4" threaded_outlet': 1}
+    assert takeoff.observed_component_summary == {'4" coupling': 2}
     assert takeoff.reconciliation_warnings == []
 
 
@@ -56,7 +66,12 @@ def test_conflicting_observed_and_modeled_quantities_are_reported(
     valid_design: FabricationDesign, catalogs: CatalogBundle
 ) -> None:
     valid_design.observed_components = [
-        ObservedComponent(description_raw="3 couplings", quantity=3, kind="Coupling")
+        ObservedComponent(
+            description_raw="3 couplings",
+            quantity=3,
+            nominal_size_raw='4"',
+            kind="Coupling",
+        )
     ]
     report = validate_design(
         valid_design,
@@ -68,7 +83,7 @@ def test_conflicting_observed_and_modeled_quantities_are_reported(
     takeoff = compute_takeoff(valid_design, report)
 
     assert takeoff.reconciliation_warnings == [
-        "Observed parts list has 3 coupling; geometry implies 2"
+        'Observed parts list quantity for 4" coupling is 3; geometry implies 2'
     ]
 
 
@@ -134,6 +149,24 @@ def test_invalid_dimension_does_not_create_chain_or_total_conflict_cascades(
     assert "dimension.invalid" in codes
     assert "segment.chain_disconnected" not in codes
     assert "pipe.total_conflict" not in codes
+
+
+def test_total_conflict_does_not_create_out_of_bounds_cascade(
+    valid_design: FabricationDesign,
+    catalogs: CatalogBundle,
+) -> None:
+    valid_design.spools[0].stated_total_length_raw = "7 ft"
+
+    report = validate_design(
+        valid_design,
+        tolerance=Fraction(1, 16),
+        catalogs=catalogs,
+        allow_demo=True,
+    )
+
+    codes = {issue.code for issue in report.issues}
+    assert "pipe.total_conflict" in codes
+    assert "feature.out_of_bounds" not in codes
 
 
 def test_takeoff_refuses_invalid_design(catalogs: CatalogBundle) -> None:

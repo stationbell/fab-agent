@@ -69,6 +69,8 @@ def test_vision_prompt_defines_the_transcription_contract() -> None:
     assert "must not become" in prompt
     assert "connection_type" in prompt
     assert "do not calculate dimensions" in prompt
+    assert "physical outlet stem visibly points" in prompt
+    assert "exclude field labels such as Total" in prompt
 
 
 def test_unknown_design_type_fails_before_creating_a_run(
