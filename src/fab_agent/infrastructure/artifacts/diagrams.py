@@ -35,6 +35,7 @@ def generate_diagram(
     figure, axis = plt.subplots(figsize=(12, 4), constrained_layout=True)
     try:
         axis.plot([0, total], [0, 0], color="#293241", linewidth=10, solid_capstyle="butt")
+        labelled = 0
         for feature in spool.features:
             position_value = geometry.positions.get(feature.id)
             if position_value is None:
@@ -43,14 +44,17 @@ def generate_diagram(
             if feature.kind == "outlet":
                 direction = -1 if feature.orientation == "down" else 1
                 axis.plot([position, position], [0, direction * 0.55], color="#d1495b", linewidth=5)
+            # Alternate by label order, not by position value, so that adjacent
+            # labels never collide on evenly spaced features.
             axis.annotate(
                 f"{_feature_label(feature)}\n{position_value.display}",
                 xy=(position, 0),
-                xytext=(0, 25 if position % 2 else -42),
+                xytext=(0, 25 if labelled % 2 else -42),
                 textcoords="offset points",
                 ha="center",
                 fontsize=9,
             )
+            labelled += 1
         axis.annotate(
             f"TOTAL {geometry.total_length.display}",
             xy=(total / 2, 0),

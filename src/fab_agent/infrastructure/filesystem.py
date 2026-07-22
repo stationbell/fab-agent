@@ -224,13 +224,18 @@ class FilesystemRunStore:
             raise StorageError(f"Cannot append event for {run_id}: {exc}") from exc
 
     def set_status(self, run_id: str, status: RunStatus) -> None:
-        current = self.current(run_id)
-        self._write_current(
-            self._run_path(run_id),
-            status=status,
-            version=int(current["version"]),
-            questions_asked=int(current["questions_asked"]),
-        )
+        run_path = self._run_path(run_id)
+        try:
+            with self._lock(run_id):
+                current = self.current(run_id)
+                self._write_current(
+                    run_path,
+                    status=status,
+                    version=int(current["version"]),
+                    questions_asked=int(current["questions_asked"]),
+                )
+        except Timeout as exc:
+            raise StorageError(f"Run {run_id} is busy") from exc
 
     def commit_version(
         self,

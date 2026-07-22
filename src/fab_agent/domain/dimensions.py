@@ -20,6 +20,21 @@ _UNICODE_FRACTIONS = {
     "⅚": Fraction(5, 6),
 }
 
+_DIMENSION_PUNCTUATION = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u2032": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2033": '"',
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Dimension:
@@ -33,28 +48,33 @@ class Dimension:
 
 def _parse_number(value: str) -> Fraction:
     value = value.strip()
-    unicode_value = next((item for item in _UNICODE_FRACTIONS if item in value), None)
-    if unicode_value:
-        whole = value.replace(unicode_value, "").strip()
-        return (
-            Fraction(int(whole), 1) + _UNICODE_FRACTIONS[unicode_value]
-            if whole
-            else _UNICODE_FRACTIONS[unicode_value]
-        )
-    parts = value.split()
-    if len(parts) == 2 and "/" in parts[1]:
-        return Fraction(int(parts[0]), 1) + Fraction(parts[1])
-    if len(parts) == 1:
-        return Fraction(parts[0])
+    try:
+        unicode_value = next((item for item in _UNICODE_FRACTIONS if item in value), None)
+        if unicode_value:
+            whole = value.replace(unicode_value, "").strip()
+            return (
+                Fraction(int(whole), 1) + _UNICODE_FRACTIONS[unicode_value]
+                if whole
+                else _UNICODE_FRACTIONS[unicode_value]
+            )
+        parts = value.split()
+        if len(parts) == 2 and "/" in parts[1]:
+            return Fraction(int(parts[0]), 1) + Fraction(parts[1])
+        if len(parts) == 1:
+            return Fraction(parts[0])
+    except (ValueError, ZeroDivisionError) as exc:
+        raise DimensionParseError(f"Invalid number: {value!r}") from exc
     raise DimensionParseError(f"Invalid number: {value!r}")
+
+
+def _normalize_dimension_text(raw: str) -> str:
+    return re.sub(r"\s+", " ", raw.strip().lower().translate(_DIMENSION_PUNCTUATION))
 
 
 def parse_dimension(raw: str) -> Dimension:
     """Parse common feet/inch handwriting forms into an exact Fraction of inches."""
 
-    text = raw.strip().lower().replace("\u2032", "'").replace("\u2019", "'")
-    text = text.replace("\u2033", '"').replace("\u201c", '"').replace("\u201d", '"')
-    text = re.sub(r"\s+", " ", text)
+    text = _normalize_dimension_text(raw)
     if not text:
         raise DimensionParseError("Dimension is empty")
 
@@ -95,6 +115,30 @@ def parse_dimension(raw: str) -> Dimension:
     raise DimensionParseError(f"Unsupported dimension: {raw!r}")
 
 
+_FEET_MARKERS = re.compile(r"['\u2032\u2019]|\bft\b|\bfeet\b|\bfoot\b", re.IGNORECASE)
+_HYPHENATED_NOMINAL_SIZE = re.compile(
+    r"^(?P<whole>\d+)\s*[-\u2013\u2014]\s*(?P<fraction>\d+/\d+)"
+    r'(?P<unit>\s*(?:"|in|inches?)?)$',
+    re.IGNORECASE,
+)
+
+
+def parse_nominal_size(raw: str) -> Dimension:
+    """Parse a nominal component size, which is always inches and never feet.
+
+    Nominal sizes are conventionally written with a hyphen between the whole
+    number and the fraction, as in ``2-1/2`` or ``1-1/4``. That same text is
+    genuinely ambiguous for a length, so :func:`parse_dimension` still rejects
+    it; only sizes accept the hyphenated form.
+    """
+
+    text = _normalize_dimension_text(raw)
+    if _FEET_MARKERS.search(text):
+        raise DimensionParseError(f"Nominal size must be written in inches: {raw!r}")
+    normalized = _HYPHENATED_NOMINAL_SIZE.sub(r"\g<whole> \g<fraction>\g<unit>", text)
+    return Dimension(raw=raw, inches=parse_dimension(normalized).inches)
+
+
 def parse_stated_total(raw: str) -> Dimension:
     """Parse a dimension from a total field while preserving its raw source text."""
 
@@ -105,8 +149,20 @@ def parse_stated_total(raw: str) -> Dimension:
     return Dimension(raw=raw, inches=parsed.inches)
 
 
+def format_nominal_size(value: Fraction) -> str:
+    """Format a nominal size in inches; a size is never rolled up into feet."""
+
+    whole, numerator = divmod(value.numerator, value.denominator)
+    fraction = Fraction(numerator, value.denominator)
+    if not fraction:
+        return f'{whole}"'
+    if not whole:
+        return f'{fraction.numerator}/{fraction.denominator}"'
+    return f'{whole} {fraction.numerator}/{fraction.denominator}"'
+
+
 def format_inches(value: Fraction) -> str:
-    """Format inches as feet and exact residual inches."""
+    """Format a length as feet and exact residual inches."""
 
     sign = "-" if value < 0 else ""
     positive = abs(value)

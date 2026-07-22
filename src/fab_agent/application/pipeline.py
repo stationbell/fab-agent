@@ -73,6 +73,29 @@ def vision_prompt() -> str:
     )
 
 
+def _error_chain(error: BaseException) -> list[str]:
+    """Record exception types without persisting messages or machine-specific paths.
+
+    An unexpected exception type here means a defect rather than an unreadable
+    sketch, so the type is recorded even though the operator-facing warning
+    stays a plain message.
+    """
+
+    chain: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(type(current).__name__)
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
+    return chain
+
+
 def _missing_field_clarification(report: ValidationReport) -> Clarification | None:
     fields = {
         "pipe.size_missing": ("nominal_size_raw", "nominal pipe size"),
@@ -114,24 +137,31 @@ def commit_terminal(
     target_field: str | None = None,
 ) -> FabResult:
     validation = state.validation or ValidationReport(passed=False)
-    version, version_path = store.commit_version(
-        run_id,
-        status=status,
-        design=state.design,
-        provenance=state.provenance,
-        validation=validation,
-        takeoff=state.takeoff,
-        artifacts_source=state.artifacts.root if state.artifacts else None,
-        question=question,
-        target_field=target_field,
-        diagnostics=state.uncertainties,
-    )
-    store.append_event(run_id, f"run.{status}", {"version": version})
-    artifacts: dict[str, Path] = {}
-    if state.artifacts:
-        for key, source in state.artifacts.files.items():
-            artifacts[key] = version_path / "artifacts" / source.relative_to(state.artifacts.root)
-        shutil.rmtree(state.artifacts.root, ignore_errors=True)
+    try:
+        version, version_path = store.commit_version(
+            run_id,
+            status=status,
+            design=state.design,
+            provenance=state.provenance,
+            validation=validation,
+            takeoff=state.takeoff,
+            artifacts_source=state.artifacts.root if state.artifacts else None,
+            question=question,
+            target_field=target_field,
+            diagnostics=state.uncertainties,
+        )
+        store.append_event(run_id, f"run.{status}", {"version": version})
+        artifacts: dict[str, Path] = {}
+        if state.artifacts:
+            for key, source in state.artifacts.files.items():
+                artifacts[key] = (
+                    version_path / "artifacts" / source.relative_to(state.artifacts.root)
+                )
+    finally:
+        # The version snapshot owns its own copy, so the staging tree is always
+        # discarded, including when the commit itself failed.
+        if state.artifacts:
+            shutil.rmtree(state.artifacts.root, ignore_errors=True)
     warnings = [issue.message for issue in validation.issues if issue.level != "info"]
     warnings.extend(item for item in state.uncertainties if item not in warnings)
     if state.takeoff:
@@ -323,7 +353,15 @@ async def execute_pipeline(
             status="complete",
         )
     except (ArtifactError, ModelError, ValueError) as exc:
-        store.append_event(run_id, "pipeline.failed_closed", {"error": str(exc)})
+        store.append_event(
+            run_id,
+            "pipeline.failed_closed",
+            {
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "error_chain": _error_chain(exc),
+            },
+        )
         state.uncertainties.append(str(exc))
         return commit_terminal(
             run_id=run_id,

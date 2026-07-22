@@ -1,9 +1,15 @@
 import csv
 from fractions import Fraction
+from pathlib import Path
 
+import pytest
+
+from fab_agent.application.pipeline import PipelineState, commit_terminal
 from fab_agent.domain.design import FabricationDesign, ObservedComponent
+from fab_agent.domain.provenance import ProvenanceDocument
 from fab_agent.domain.takeoff import compute_takeoff
 from fab_agent.domain.validation import validate_design
+from fab_agent.errors import StorageError
 from fab_agent.infrastructure.artifacts import generate_artifacts
 from fab_agent.infrastructure.catalogs import CatalogBundle
 
@@ -54,3 +60,49 @@ def test_generates_png_svg_csv_report_and_step(
     assert "Open each `spools/<spool-id>.step` file in Autodesk Fusion" in review
     assert "does not contain a native Fusion parametric timeline" in review
     assert "they are not placed in CAD" in review
+
+
+def test_artifact_staging_is_removed_when_the_commit_fails(
+    valid_design: FabricationDesign, catalogs: CatalogBundle
+) -> None:
+    validation = validate_design(
+        valid_design,
+        tolerance=Fraction(1, 16),
+        catalogs=catalogs,
+        allow_demo=True,
+    )
+    takeoff = compute_takeoff(valid_design, validation)
+    artifacts = generate_artifacts(
+        valid_design,
+        validation,
+        takeoff,
+        catalogs,
+        allow_demo=True,
+        cad_enabled=False,
+    )
+    staging_root = artifacts.root
+    assert staging_root.is_dir()
+
+    class FailingStore:
+        root = Path("runs")
+
+        def commit_version(self, *args: object, **kwargs: object) -> tuple[int, Path]:
+            raise StorageError("commit failed")
+
+    state = PipelineState(
+        design=valid_design,
+        provenance=ProvenanceDocument(),
+        validation=validation,
+        takeoff=takeoff,
+        artifacts=artifacts,
+    )
+
+    with pytest.raises(StorageError):
+        commit_terminal(
+            run_id="run",
+            store=FailingStore(),  # type: ignore[arg-type]
+            state=state,
+            status="complete",
+        )
+
+    assert not staging_root.exists()

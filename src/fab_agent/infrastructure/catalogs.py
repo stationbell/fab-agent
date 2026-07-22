@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict
 
-from fab_agent.domain.dimensions import parse_dimension
+from fab_agent.domain.dimensions import parse_dimension, parse_nominal_size
 from fab_agent.errors import ConfigurationError
 
 
@@ -17,22 +17,38 @@ class CatalogModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+def _exact_length(value: str) -> str:
+    parse_dimension(value)
+    return value
+
+
+def _exact_nominal_size(value: str) -> str:
+    parse_nominal_size(value)
+    return value
+
+
+# Catalog geometry is parsed once at load so that an unreadable catalog value is
+# reported against the catalog file rather than misattributed to the sketch.
+LengthValue = Annotated[str, AfterValidator(_exact_length)]
+NominalSizeValue = Annotated[str, AfterValidator(_exact_nominal_size)]
+
+
 class PipeCatalogEntry(CatalogModel):
     key: str
-    nominal_size: str
+    nominal_size: NominalSizeValue
     schedule: str
     material: str
-    outside_diameter_in: str
-    wall_thickness_in: str
+    outside_diameter_in: LengthValue
+    wall_thickness_in: LengthValue
     demo_only: bool = False
 
 
 class ComponentCatalogEntry(CatalogModel):
     key: str
     kind: str
-    nominal_size: str
-    outside_diameter_in: str
-    length_in: str
+    nominal_size: NominalSizeValue
+    outside_diameter_in: LengthValue
+    length_in: LengthValue
     demo_only: bool = False
 
 
@@ -43,12 +59,12 @@ class CatalogBundle(CatalogModel):
     def find_pipe(
         self, nominal_size_raw: str, schedule: str, material: str, *, allow_demo: bool
     ) -> PipeCatalogEntry | None:
-        target_nps = parse_dimension(nominal_size_raw).inches
+        target_nps = parse_nominal_size(nominal_size_raw).inches
         for entry in self.pipes:
             if entry.demo_only and not allow_demo:
                 continue
             if (
-                parse_dimension(entry.nominal_size).inches == target_nps
+                parse_nominal_size(entry.nominal_size).inches == target_nps
                 and _normalize_schedule(entry.schedule) == _normalize_schedule(schedule)
                 and entry.material.casefold() == material.casefold()
             ):
@@ -58,11 +74,11 @@ class CatalogBundle(CatalogModel):
     def find_component(
         self, kind: str, nominal_size_raw: str, *, allow_demo: bool
     ) -> ComponentCatalogEntry | None:
-        target_nps = parse_dimension(nominal_size_raw).inches
+        target_nps = parse_nominal_size(nominal_size_raw).inches
         for entry in self.components:
             if entry.demo_only and not allow_demo:
                 continue
-            if entry.kind == kind and parse_dimension(entry.nominal_size).inches == target_nps:
+            if entry.kind == kind and parse_nominal_size(entry.nominal_size).inches == target_nps:
                 return entry
         return None
 

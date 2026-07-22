@@ -7,7 +7,7 @@ from collections import Counter
 from pydantic import Field
 
 from fab_agent.domain.design import DomainModel, FabricationDesign
-from fab_agent.domain.dimensions import format_inches, parse_dimension
+from fab_agent.domain.dimensions import format_nominal_size, parse_dimension, parse_nominal_size
 from fab_agent.domain.validation import RationalValue, ValidationReport
 from fab_agent.errors import DimensionParseError
 
@@ -21,7 +21,7 @@ def _component_key(kind: str, nominal_size_raw: str | None) -> str:
     if not nominal_size_raw:
         return normalized_kind
     try:
-        size = format_inches(parse_dimension(nominal_size_raw).inches)
+        size = format_nominal_size(parse_nominal_size(nominal_size_raw).inches)
     except DimensionParseError:
         size = " ".join(nominal_size_raw.split())
     return f"{size} {normalized_kind}"

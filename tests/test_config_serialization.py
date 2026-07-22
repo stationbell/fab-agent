@@ -7,6 +7,7 @@ import pytest
 from fab_agent.config import OllamaConfig, load_config
 from fab_agent.domain.design import FabricationDesign
 from fab_agent.errors import ConfigurationError
+from fab_agent.infrastructure.catalogs import load_catalogs
 from fab_agent.infrastructure.serialization import read_toml, write_toml
 
 
@@ -65,6 +66,48 @@ def test_ollama_cloud_rejects_plaintext_custom_endpoint() -> None:
 def test_missing_explicit_config_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ConfigurationError, match="does not exist"):
         load_config(tmp_path / "missing.toml")
+
+
+@pytest.mark.parametrize("invalid_value", ["four and a half", "1/0"])
+def test_unreadable_catalog_geometry_is_reported_against_the_catalog(
+    tmp_path: Path, invalid_value: str
+) -> None:
+    """A bad catalog value must not surface later as an invalid source dimension."""
+
+    (tmp_path / "pipe.toml").write_text(
+        "schema_version = 1\n\n"
+        "[[pipes]]\n"
+        'key = "broken"\n'
+        'nominal_size = "4"\n'
+        'schedule = "10"\n'
+        'material = "demo carbon steel"\n'
+        f'outside_diameter_in = "{invalid_value}"\n'
+        'wall_thickness_in = "1/8"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "components.toml").write_text(
+        "schema_version = 1\ncomponents = []\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigurationError, match="Invalid catalog schema"):
+        load_catalogs(tmp_path)
+
+
+def test_catalog_nominal_size_may_not_be_written_in_feet(tmp_path: Path) -> None:
+    (tmp_path / "pipe.toml").write_text("schema_version = 1\npipes = []\n", encoding="utf-8")
+    (tmp_path / "components.toml").write_text(
+        "schema_version = 1\n\n"
+        "[[components]]\n"
+        'key = "wrong-units"\n'
+        'kind = "coupling"\n'
+        'nominal_size = "4\'"\n'
+        'outside_diameter_in = "5 1/4"\n'
+        'length_in = "3"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="Invalid catalog schema"):
+        load_catalogs(tmp_path)
 
 
 def test_design_toml_round_trip(tmp_path: Path, valid_design: FabricationDesign) -> None:

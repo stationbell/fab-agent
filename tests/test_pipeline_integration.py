@@ -7,7 +7,7 @@ import pytest
 from conftest import FakeModel
 
 from fab_agent.api import resume_fab_agent, run_fab_agent
-from fab_agent.application.pipeline import vision_prompt
+from fab_agent.application.pipeline import _error_chain, vision_prompt
 from fab_agent.application.runner import Dependencies, rebuild_run
 from fab_agent.config import AppConfig
 from fab_agent.domain.design import FabricationDesign
@@ -71,6 +71,20 @@ def test_vision_prompt_defines_the_transcription_contract() -> None:
     assert "do not calculate dimensions" in prompt
     assert "physical outlet stem visibly points" in prompt
     assert "exclude field labels such as Total" in prompt
+
+
+def test_error_chain_records_types_without_persisting_exception_messages() -> None:
+    path = Path.cwd() / "private-input.png"
+    try:
+        try:
+            raise FileNotFoundError(path)
+        except FileNotFoundError as exc:
+            raise ValueError("safe outer message") from exc
+    except ValueError as exc:
+        chain = _error_chain(exc)
+
+    assert chain == ["ValueError", "FileNotFoundError"]
+    assert str(path) not in repr(chain)
 
 
 def test_unknown_design_type_fails_before_creating_a_run(
@@ -184,7 +198,12 @@ def test_malformed_model_output_fails_closed(
     assert result.status == "needs_review"
     assert model.calls == 1
     assert "malformed structured output" in result.warnings
-    assert "pipeline.failed_closed" in (result.run_path / "events.jsonl").read_text()
+    events = (result.run_path / "events.jsonl").read_text()
+    assert "pipeline.failed_closed" in events
+    # The event stream names the exception type so that a defect is
+    # distinguishable from an unreadable sketch after the fact.
+    assert '"error_type":"ModelError"' in events
+    assert str(Path.cwd()) not in events
 
 
 def test_extraction_has_a_hard_wall_clock_timeout(

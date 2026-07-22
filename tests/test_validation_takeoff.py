@@ -5,7 +5,7 @@ from fractions import Fraction
 import pytest
 
 from fab_agent.domain.design import FabricationDesign, ObservedComponent
-from fab_agent.domain.takeoff import compute_takeoff
+from fab_agent.domain.takeoff import _component_key, compute_takeoff
 from fab_agent.domain.validation import validate_design
 from fab_agent.infrastructure.catalogs import CatalogBundle
 
@@ -167,6 +167,32 @@ def test_total_conflict_does_not_create_out_of_bounds_cascade(
     codes = {issue.code for issue in report.issues}
     assert "pipe.total_conflict" in codes
     assert "feature.out_of_bounds" not in codes
+
+
+def test_hyphenated_nominal_size_matches_the_catalog_and_takeoff_key(
+    valid_design: FabricationDesign, catalogs: CatalogBundle
+) -> None:
+    """``1-1/4`` is how the size is written on a sketch; it must reach the catalog."""
+
+    valid_design.spools[0].features[1].nominal_size_raw = "1-1/4"
+
+    report = validate_design(
+        valid_design,
+        tolerance=Fraction(1, 16),
+        catalogs=catalogs,
+        allow_demo=True,
+    )
+
+    assert report.passed
+    takeoff = compute_takeoff(valid_design, report)
+    assert takeoff.component_summary == {'1 1/4" threaded_outlet': 1, '4" coupling': 2}
+
+
+def test_component_keys_use_size_notation_rather_than_length_notation() -> None:
+    assert _component_key("coupling", "4") == '4" coupling'
+    assert _component_key("coupling", "2-1/2") == '2 1/2" coupling'
+    assert _component_key("coupling", "14") == '14" coupling'
+    assert _component_key("coupling", "unreadable") == "unreadable coupling"
 
 
 def test_takeoff_refuses_invalid_design(catalogs: CatalogBundle) -> None:
