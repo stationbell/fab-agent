@@ -1,0 +1,30 @@
+schema_version = 1
+
+[[pipes]]
+key = "demo-steel-2-sch10"
+nominal_size = "2"
+schedule = "10"
+material = "demo carbon steel"
+outside_diameter_in = "2 3/8"
+wall_thickness_in = "1/8"
+demo_only = true
+
+[[pipes]]
+key = "demo-steel-4-sch10"
+nominal_size = "4"
+schedule = "10"
+material = "demo carbon steel"
+outside_diameter_in = "4 1/2"
+wall_thickness_in = "1/8"
+demo_only = true
+
+# Material wording is taken from the supplied sample quote (A135 + BLK).
+# Geometry remains synthetic and demo-only; this is not a fabrication default.
+[[pipes]]
+key = "demo-a135-black-steel-4-sch10"
+nominal_size = "4"
+schedule = "10"
+material = "A135 black steel"
+outside_diameter_in = "4 1/2"
+wall_thickness_in = "1/8"
+demo_only = true

@@ -1,0 +1,30 @@
+[ollama]
+connection = "cloud"
+# Store only the environment-variable name here, never the API key value.
+api_key_env = "OLLAMA_API_KEY"
+vision_model = "qwen3.5:397b"
+# Hard wall-clock limit for the single image-transcription request.
+request_timeout_seconds = 180
+
+[workflow]
+max_human_questions = 1
+structured_output_retry_count = 2
+
+[images]
+max_edge_pixels = 2000
+minimum_bytes = 15360
+maximum_bytes = 20971520
+allowed_formats = ["jpeg", "png", "gif", "webp", "heic"]
+
+[output]
+root = "runs"
+
+[catalogs]
+root = "catalogs"
+allow_demo_entries = false
+
+[validation]
+dimensional_tolerance_in = "1/16"
+
+[cad]
+enabled = true
