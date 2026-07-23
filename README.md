@@ -4,6 +4,12 @@
 
 `fab-agent` turns photographs of simple hand-drawn straight pipe-spool sketches into structured, validated, reviewable fabrication packages.
 
+<p align="center">
+  <img src="docs/example-sketch.jpg" alt="Hand-drawn pipe-spool sketch: 4-inch Sch 10 pipe with a 1-1/4-inch threaded outlet, 3 foot 7 inch and 6 foot segments totaling 9 foot 7 inch, and two 4-inch couplings" width="480">
+  <br>
+  <em>Example input — a hand-drawn 4&quot; Sch 10 spool with a 1¼&quot; threaded outlet, a 9'-7&quot; two-segment total, and two loose 4&quot; couplings (the same case as the <code>sample-sketch-4</code> walkthrough below).</em>
+</p>
+
 > **REVIEW OUTPUT — NOT APPROVED FOR FABRICATION**
 
 Completion means that the V1 transcription, deterministic checks, takeoff, and configured review artifacts were generated. It never means that a design is approved or released for fabrication.
